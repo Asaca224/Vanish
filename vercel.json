@@ -2,15 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "path": "/api/cron/gmail-poll",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/recheck",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/cron/drop-windows",
+      "path": "/api/cron/tick",
       "schedule": "0 7 * * *"
     }
   ]

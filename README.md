@@ -45,8 +45,10 @@ later; it cannot run on Vercel. See [Architecture](#architecture).
 - **Gmail confirmation poller** — finds broker confirmation emails and advances
   `awaiting_confirmation → confirmed`. (`src/lib/gmail.ts`)
 - **Lifecycle state machine** with an audited transition log. (`src/lib/state-machine.ts`)
-- **Vercel Cron** endpoints: Gmail poll, recheck cadence, DROP-window tracking.
-  (`src/app/api/cron/*`, `vercel.json`)
+- **Vercel Cron**: a single daily orchestrator (`/api/cron/tick`) runs the Gmail
+  poll, relisting recheck, and DROP-window tracking — one cron job to stay within
+  Vercel Hobby's cron limit. Each routine is also exposed as an individual
+  endpoint for manual runs. (`src/app/api/cron/*`, `src/lib/cron-jobs.ts`, `vercel.json`)
 - **Worker adapter interface + reference adapter template** for Phase 3.
   (`src/worker/*`)
 
