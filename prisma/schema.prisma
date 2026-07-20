@@ -1,0 +1,289 @@
+// Vanish data model (spec §5).
+// Storage: Neon (Postgres). All PII values are field-encrypted at the app
+// layer BEFORE they reach Postgres (see src/lib/crypto.ts). Columns holding
+// ciphertext are suffixed `_encrypted` and are opaque blobs to the DB.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js (NextAuth) models — session/account storage via the Prisma adapter.
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Domain models (spec §5)
+// ---------------------------------------------------------------------------
+
+enum AttributeType {
+  name
+  alias
+  email
+  phone
+  address_current
+  address_prior
+  dob
+  relative
+}
+
+enum RemovalMethod {
+  drop
+  email
+  web_form
+  postal
+  manual_only
+}
+
+enum ListingStatus {
+  candidate
+  confirmed
+  rejected
+}
+
+enum Channel {
+  drop
+  email
+  web_form
+  postal
+}
+
+// RemovalRequest lifecycle (spec §8).
+enum RequestState {
+  discovered
+  queued
+  in_progress
+  awaiting_user
+  submitted
+  awaiting_confirmation
+  confirmed
+  verifying
+  removed
+  // terminal / side states
+  exempt
+  failed
+  blocked
+  skipped_covered_by_drop
+}
+
+enum EvidenceKind {
+  screenshot
+  email_ref
+  request_id
+  pdf
+}
+
+// One row per person the tool acts for. MVP: only the operator (§2.1).
+model Subject {
+  id                      String   @id @default(cuid())
+  label                   String // e.g. "self"
+  isOperator              Boolean  @default(true)
+  // Required for any non-operator subject before requests may be submitted (§9).
+  authorizedAgentDocRef   String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  attributes         IdentityAttribute[]
+  listings           Listing[]
+  removalRequests    RemovalRequest[]
+  channelSubmissions ChannelSubmission[]
+}
+
+// The normalized fingerprint. `valueEncrypted` holds app-layer ciphertext.
+model IdentityAttribute {
+  id             String        @id @default(cuid())
+  subjectId      String
+  type           AttributeType
+  valueEncrypted String        @db.Text
+  // Non-sensitive, searchable hint for de-duping without decrypting (e.g. a
+  // blind index / HMAC of the normalized value). Never the plaintext.
+  valueHash      String?
+  verified       Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, type, valueHash])
+  @@index([subjectId])
+}
+
+// The target catalog: CA registry + curated people-search list.
+model Broker {
+  id                    String        @id @default(cuid())
+  name                  String
+  domain                String        @unique
+  optOutUrl             String?
+  removalMethod         RemovalMethod
+  requiresCaptcha       Boolean       @default(false)
+  requiresId            Boolean       @default(false)
+  // Pattern for the "from" address of the broker's confirmation email.
+  confirmationEmailFrom String?
+  // Email address to send an email-channel opt-out request to.
+  optOutEmail           String?
+  recheckDays           Int           @default(30)
+  caRegistered          Boolean       @default(false)
+  // If true, a DROP bulk submission covers this broker (derived: caRegistered
+  // && not exempt). See src/lib/channel-router.ts.
+  coveredByDrop         Boolean       @default(false)
+  adapterKey            String? // → worker adapter (spec §6)
+  notes                 String?       @db.Text
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  listings        Listing[]
+  removalRequests RemovalRequest[]
+
+  @@index([removalMethod])
+  @@index([caRegistered])
+}
+
+// A found instance of a subject on a broker.
+model Listing {
+  id             String        @id @default(cuid())
+  subjectId      String
+  brokerId       String
+  profileUrl     String?
+  matchedFields  Json? // which fingerprint fields matched
+  matchConfidence Float         @default(0)
+  status         ListingStatus @default(candidate)
+  discoveredAt   DateTime      @default(now())
+
+  subject         Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  broker          Broker           @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  removalRequests RemovalRequest[]
+
+  @@index([subjectId])
+  @@index([brokerId])
+  @@index([status])
+}
+
+// The lifecycle record for a single removal.
+model RemovalRequest {
+  id                   String       @id @default(cuid())
+  subjectId            String
+  brokerId             String
+  listingId            String?
+  channel              Channel
+  state                RequestState @default(discovered)
+  confirmationRequired Boolean      @default(false)
+  submittedAt          DateTime?
+  confirmedAt          DateTime?
+  verifiedRemovedAt    DateTime?
+  nextRecheckAt        DateTime?
+  exemptReason         String?
+  failureReason        String?
+  // Link back to the DROP bulk submission when channel = drop.
+  channelSubmissionId  String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  subject          Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  broker           Broker            @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  listing          Listing?          @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  channelSubmission ChannelSubmission? @relation(fields: [channelSubmissionId], references: [id], onDelete: SetNull)
+  evidence         Evidence[]
+  events           RequestEvent[]
+
+  @@index([subjectId])
+  @@index([state])
+  @@index([nextRecheckAt])
+  @@index([channelSubmissionId])
+}
+
+// Audit trail of state transitions for a request (supports the state machine).
+model RequestEvent {
+  id              String        @id @default(cuid())
+  removalRequestId String
+  fromState       RequestState?
+  toState         RequestState
+  note            String?
+  createdAt       DateTime      @default(now())
+
+  removalRequest RemovalRequest @relation(fields: [removalRequestId], references: [id], onDelete: Cascade)
+
+  @@index([removalRequestId])
+}
+
+// For DROP: one bulk submission covering many brokers (§5).
+model ChannelSubmission {
+  id              String   @id @default(cuid())
+  subjectId       String
+  channel         Channel  @default(drop)
+  submittedAt     DateTime @default(now())
+  requestReference String? // the reference DROP gives the consumer
+  coversBrokerIds Json // string[] of Broker.id covered
+  // DROP window tracking (§8): retrieve <=45d, finalize <=90d.
+  retrieveByAt    DateTime?
+  finalizeByAt    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  subject         Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  removalRequests RemovalRequest[]
+
+  @@index([subjectId])
+}
+
+model Evidence {
+  id               String       @id @default(cuid())
+  removalRequestId String
+  kind             EvidenceKind
+  // Encrypted; prefer an object-storage ref over base64-in-Postgres (§2.1).
+  blobRef          String       @db.Text
+  capturedAt       DateTime     @default(now())
+
+  removalRequest RemovalRequest @relation(fields: [removalRequestId], references: [id], onDelete: Cascade)
+
+  @@index([removalRequestId])
+}
