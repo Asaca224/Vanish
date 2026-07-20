@@ -1,20 +1,49 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import type { Role } from "@prisma/client";
 import { auth } from "@/auth";
 
-/** Small helpers shared across API route handlers. */
+/** Helpers shared across API route handlers (multi-user, role-aware). */
 
-export async function requireOperator(): Promise<
-  { ok: true } | { ok: false; response: NextResponse }
+export type AuthedUser = { id: string; email: string | null; role: Role };
+
+/**
+ * Require a signed-in user. Returns the session user (id + role) so handlers can
+ * scope every query by `user.id` — the core isolation guarantee (§2.1).
+ */
+export async function requireUser(): Promise<
+  { ok: true; user: AuthedUser } | { ok: false; response: NextResponse }
 > {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return {
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
-  return { ok: true };
+  return {
+    ok: true,
+    user: {
+      id: session.user.id,
+      email: session.user.email ?? null,
+      role: session.user.role,
+    },
+  };
+}
+
+/** Require an admin. Non-admins get 403, not 401, so the UI can distinguish. */
+export async function requireAdmin(): Promise<
+  { ok: true; user: AuthedUser } | { ok: false; response: NextResponse }
+> {
+  const guard = await requireUser();
+  if (!guard.ok) return guard;
+  if (guard.user.role !== "admin") {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+  return guard;
 }
 
 export function badRequest(error: z.ZodError | string): NextResponse {

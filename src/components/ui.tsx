@@ -23,6 +23,7 @@ const STATE_COLORS: Record<RequestState, string> = {
   queued: "bg-edge text-gray-300",
   in_progress: "bg-accent/20 text-accent",
   awaiting_user: "bg-warn/20 text-warn",
+  awaiting_user_verification: "bg-warn/20 text-warn",
   submitted: "bg-accent/20 text-accent",
   awaiting_confirmation: "bg-warn/20 text-warn",
   confirmed: "bg-good/20 text-good",

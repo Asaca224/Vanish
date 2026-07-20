@@ -1,27 +1,28 @@
 import type { RequestState } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireOnboarded } from "@/lib/page-auth";
 import { StateBadge } from "@/components/ui";
-import { requireSession } from "@/lib/page-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function RequestsPage() {
-  await requireSession();
-  const requests = await prisma.removalRequest.findMany({
-    orderBy: { updatedAt: "desc" },
-    take: 500,
-    include: {
-      broker: { select: { name: true, domain: true } },
-    },
-  });
+  const session = await requireOnboarded();
+  const userId = session.user.id;
 
-  const grouped = await prisma.removalRequest.groupBy({
-    by: ["state"],
-    _count: true,
-  });
-  const counts = Object.fromEntries(
-    grouped.map((g) => [g.state, g._count]),
-  ) as Record<RequestState, number>;
+  const [requests, grouped] = await Promise.all([
+    prisma.removalRequest.findMany({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      take: 500,
+      include: { broker: { select: { name: true, domain: true } } },
+    }),
+    prisma.removalRequest.groupBy({ by: ["state"], where: { userId }, _count: true }),
+  ]);
+
+  const counts = Object.fromEntries(grouped.map((g) => [g.state, g._count])) as Record<
+    RequestState,
+    number
+  >;
 
   return (
     <div className="space-y-6">
@@ -73,14 +74,10 @@ export default async function RequestsPage() {
                     <StateBadge state={r.state} />
                   </td>
                   <td className="py-2 text-muted">
-                    {r.submittedAt
-                      ? r.submittedAt.toISOString().slice(0, 10)
-                      : "—"}
+                    {r.submittedAt ? r.submittedAt.toISOString().slice(0, 10) : "—"}
                   </td>
                   <td className="py-2 text-muted">
-                    {r.nextRecheckAt
-                      ? r.nextRecheckAt.toISOString().slice(0, 10)
-                      : "—"}
+                    {r.nextRecheckAt ? r.nextRecheckAt.toISOString().slice(0, 10) : "—"}
                   </td>
                   <td className="py-2 text-xs text-muted">
                     {r.exemptReason ?? r.failureReason ?? "—"}

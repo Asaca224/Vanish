@@ -10,22 +10,20 @@ type Attribute = {
   verified?: boolean;
 };
 
-const TYPES: { value: string; label: string }[] = [
-  { value: "name", label: "Name" },
-  { value: "alias", label: "Alias" },
-  { value: "email", label: "Email" },
-  { value: "phone", label: "Phone" },
-  { value: "address_current", label: "Address (current)" },
-  { value: "address_prior", label: "Address (prior)" },
-  { value: "dob", label: "DOB (YYYY or YYYY-MM-DD)" },
-  { value: "relative", label: "Relative" },
+const TYPES: { value: string; label: string; why: string }[] = [
+  { value: "name", label: "Name", why: "Primary search key across brokers." },
+  { value: "alias", label: "Alias / prior name", why: "Maiden names and nicknames get listed too." },
+  { value: "email", label: "Email", why: "Correlates listings and receives confirmations." },
+  { value: "phone", label: "Phone", why: "People-search sites index phone numbers." },
+  { value: "address_current", label: "Address (current)", why: "Strongest match/disambiguation signal." },
+  { value: "address_prior", label: "Address (prior)", why: "Old addresses persist on broker sites." },
+  { value: "dob", label: "DOB (YYYY or YYYY-MM-DD)", why: "Only used to tell you apart from namesakes." },
+  { value: "relative", label: "Relative (name only)", why: "Brokers list relatives — a strong match signal." },
 ];
 
 export function IntakeForm({
-  subjectId,
   initialAttributes,
 }: {
-  subjectId: string | null;
   initialAttributes: Attribute[];
 }) {
   const router = useRouter();
@@ -35,45 +33,31 @@ export function IntakeForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function createSubject() {
-    setBusy(true);
-    setError(null);
-    const res = await fetch("/api/subjects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: "self", isOperator: true }),
-    });
-    setBusy(false);
-    if (!res.ok) {
-      setError((await res.json()).error ?? "Failed to create subject");
-      return;
-    }
+  const why = TYPES.find((t) => t.value === type)?.why;
+
+  async function refresh() {
+    const list = await fetch("/api/identity");
+    if (list.ok) setAttributes((await list.json()).attributes);
     router.refresh();
   }
 
   async function addAttribute(e: React.FormEvent) {
     e.preventDefault();
-    if (!subjectId || !value.trim()) return;
+    if (!value.trim()) return;
     setBusy(true);
     setError(null);
     const res = await fetch("/api/identity", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subjectId,
-        attributes: [{ type, value: value.trim() }],
-      }),
+      body: JSON.stringify({ attributes: [{ type, value: value.trim() }] }),
     });
     setBusy(false);
     if (!res.ok) {
-      setError((await res.json()).error ?? "Failed to add attribute");
+      setError((await res.json()).error ?? "Failed to add");
       return;
     }
     setValue("");
-    // Refetch decrypted list.
-    const list = await fetch(`/api/identity?subjectId=${subjectId}`);
-    if (list.ok) setAttributes((await list.json()).attributes);
-    router.refresh();
+    await refresh();
   }
 
   async function removeAttribute(id: string) {
@@ -84,32 +68,13 @@ export function IntakeForm({
     router.refresh();
   }
 
-  if (!subjectId) {
-    return (
-      <div className="card space-y-4">
-        <p className="text-sm text-muted">
-          Create your subject (this is you — the operator) to begin entering your
-          identity fingerprint.
-        </p>
-        {error && <p className="text-sm text-bad">{error}</p>}
-        <button className="btn" onClick={createSubject} disabled={busy}>
-          Create subject
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <form onSubmit={addAttribute} className="card space-y-4">
-        <div className="grid gap-4 md:grid-cols-[200px_1fr_auto] md:items-end">
+        <div className="grid gap-4 md:grid-cols-[220px_1fr_auto] md:items-end">
           <div>
             <label className="label">Type</label>
-            <select
-              className="select"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-            >
+            <select className="select" value={type} onChange={(e) => setType(e.target.value)}>
               {TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
                   {t.label}
@@ -123,35 +88,29 @@ export function IntakeForm({
               className="input"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="Enter value — encrypted before storage"
+              placeholder="Encrypted before storage"
             />
           </div>
           <button className="btn" disabled={busy || !value.trim()}>
             Add
           </button>
         </div>
+        {why && <p className="text-xs text-muted">Why we ask: {why}</p>}
         {error && <p className="text-sm text-bad">{error}</p>}
-        <p className="text-xs text-muted">
-          Every value is encrypted at the app layer (AES-256-GCM) before it
-          reaches the database. The plaintext is only ever reassembled
-          server-side for building requests.
-        </p>
       </form>
 
       <div className="card">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-          Fingerprint ({attributes.length})
+          Your fingerprint ({attributes.length})
         </h2>
         {attributes.length === 0 ? (
-          <p className="text-sm text-muted">No attributes yet.</p>
+          <p className="text-sm text-muted">Nothing added yet.</p>
         ) : (
           <table className="w-full text-sm">
             <tbody>
               {attributes.map((a) => (
                 <tr key={a.id} className="border-t border-edge">
-                  <td className="py-2 pr-4 text-muted">
-                    {a.type.replace(/_/g, " ")}
-                  </td>
+                  <td className="py-2 pr-4 text-muted">{a.type.replace(/_/g, " ")}</td>
                   <td className="py-2">{a.value}</td>
                   <td className="py-2 text-right">
                     <button

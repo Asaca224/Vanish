@@ -204,7 +204,14 @@ async function main() {
     });
     await prisma.broker.upsert({
       where: { domain: b.domain },
-      create: { domain: b.domain, ...data },
+      // Seeded/registry brokers go live immediately. status/source are set only
+      // on create so a re-import never clobbers an admin's later decision.
+      create: {
+        domain: b.domain,
+        ...data,
+        status: "live",
+        source: b.caRegistered ? "ca_registry" : "seed",
+      },
       update: data,
     });
     existing ? updated++ : created++;

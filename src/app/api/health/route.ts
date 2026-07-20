@@ -50,12 +50,12 @@ export async function GET() {
     counts?: Record<string, number>;
   } = { ok: false };
   try {
-    const [brokers, subjects, requests] = await Promise.all([
+    const [brokers, users, requests] = await Promise.all([
       prisma.broker.count(),
-      prisma.subject.count(),
+      prisma.user.count(),
       prisma.removalRequest.count(),
     ]);
-    db = { ok: true, counts: { brokers, subjects, requests } };
+    db = { ok: true, counts: { brokers, users, requests } };
   } catch (err) {
     // Surface a short, non-sensitive reason (e.g. "table does not exist",
     // "Can't reach database server", auth failure).

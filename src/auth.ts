@@ -5,12 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { env } from "@/env";
 
 /**
- * Auth.js (NextAuth) with the Google provider (spec §10). The same Google
- * sign-in grants the Gmail read scope, so login and confirmation-reading share
- * one OAuth flow.
+ * Auth.js (NextAuth) with the Google provider (spec §3, §10). Multi-user: any
+ * Google account may sign up. The configured OPERATOR_EMAIL is bootstrapped as
+ * the admin; everyone else is a `user`.
  *
- * SINGLE-TENANT (§2.1): only OPERATOR_EMAIL may sign in. A cloud DB holding PII
- * must not be openable by anyone who happens to have a Google account.
+ * Gmail read scope is requested so the (optional) Gmail confirmation path works
+ * for users who connect it. The forwarding-address path (§2.2) is the default
+ * that avoids the restricted scope.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -21,8 +22,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: env().AUTH_GOOGLE_SECRET,
       authorization: {
         params: {
-          // Read the inbox for broker confirmations; offline + consent so we
-          // reliably receive a refresh token for background Gmail polling.
           scope:
             "openid email profile https://www.googleapis.com/auth/gmail.readonly",
           access_type: "offline",
@@ -32,12 +31,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async signIn({ user }) {
+    // Database-session strategy: `user` is the DB row, so role + id are known.
+    async session({ session, user }) {
+      if (session.user) {
+        session.user.id = user.id;
+        session.user.role = (user as { role?: "user" | "admin" }).role ?? "user";
+      }
+      return session;
+    },
+  },
+  events: {
+    // Bootstrap the operator as admin on first sign-in.
+    async createUser({ user }) {
       const operator = env().OPERATOR_EMAIL.toLowerCase();
-      return (user.email ?? "").toLowerCase() === operator;
+      if ((user.email ?? "").toLowerCase() === operator) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { role: "admin" },
+        });
+      }
     },
   },
   pages: {
-    signIn: "/signin",
+    signIn: "/login",
   },
 });

@@ -11,16 +11,18 @@ import { normalizeValue } from "@/lib/normalize";
 export type PlainAttribute = {
   type: AttributeType;
   value: string;
+  isPrimary?: boolean;
   verified?: boolean;
 };
 
-export function toEncryptedRow(subjectId: string, attr: PlainAttribute) {
+export function toEncryptedRow(userId: string, attr: PlainAttribute) {
   const normalized = normalizeValue(attr.type, attr.value);
   return {
-    subjectId,
+    userId,
     type: attr.type,
     valueEncrypted: encrypt(attr.value.trim()),
     valueHash: blindIndex(`${attr.type}:${normalized}`),
+    isPrimary: attr.isPrimary ?? false,
     verified: attr.verified ?? false,
   };
 }

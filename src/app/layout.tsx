@@ -9,12 +9,13 @@ export const metadata: Metadata = {
     "Get your personal information deleted from data brokers and people-search sites.",
 };
 
-const NAV = [
-  { href: "/", label: "Dashboard" },
-  { href: "/intake", label: "Identity" },
-  { href: "/brokers", label: "Brokers" },
+const USER_NAV = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/onboarding", label: "Identity" },
+  { href: "/listings", label: "Listings" },
   { href: "/drop", label: "DROP" },
   { href: "/requests", label: "Requests" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export default async function RootLayout({
@@ -23,6 +24,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
+  const isAdmin = session?.user?.role === "admin";
 
   return (
     <html lang="en">
@@ -34,8 +36,8 @@ export default async function RootLayout({
                 Vanish
               </Link>
               {session?.user && (
-                <nav className="flex gap-4 text-sm text-muted">
-                  {NAV.map((item) => (
+                <nav className="flex flex-wrap gap-4 text-sm text-muted">
+                  {USER_NAV.map((item) => (
                     <Link
                       key={item.href}
                       href={item.href}
@@ -44,6 +46,14 @@ export default async function RootLayout({
                       {item.label}
                     </Link>
                   ))}
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      className="font-medium text-accent transition hover:opacity-80"
+                    >
+                      Admin
+                    </Link>
+                  )}
                 </nav>
               )}
             </div>
@@ -51,7 +61,7 @@ export default async function RootLayout({
               <form
                 action={async () => {
                   "use server";
-                  await signOut({ redirectTo: "/signin" });
+                  await signOut({ redirectTo: "/login" });
                 }}
               >
                 <button className="text-sm text-muted hover:text-gray-100">
@@ -62,7 +72,7 @@ export default async function RootLayout({
           </header>
           <main className="flex-1 px-6 py-8">{children}</main>
           <footer className="border-t border-edge px-6 py-4 text-xs text-muted">
-            Single-tenant · PII field-encrypted at the app layer · Not legal advice.
+            Per-user PII field-encrypted at the app layer · Not legal advice.
           </footer>
         </div>
       </body>

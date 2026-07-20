@@ -1,29 +1,32 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { badRequest, requireOperator, serverError } from "@/lib/api";
+import { badRequest, requireUser, serverError } from "@/lib/api";
 import { recordDropSubmissionInput } from "@/lib/validation";
 import { dropWindows } from "@/lib/drop";
 
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/drop — record the operator's DROP submission (spec §3, Phase 1).
- *
- * DROP is ASSISTED: the operator submits on the authenticated privacy.ca.gov
- * site themselves. This endpoint records ONE ChannelSubmission covering every
- * CA-registered broker, creates DROP-channel RemovalRequests for those brokers
- * (state skipped_covered_by_drop → they're handled by the bulk submission),
- * and starts tracking the 45/90-day windows.
- *
- * GET returns a preview: which brokers a DROP submission would cover.
+ * DROP-assist (spec §5, Phase 1). Assisted: the user submits on the
+ * authenticated privacy.ca.gov site; this records one ChannelSubmission over
+ * every live CA-registered broker and tracks the 45/90-day windows. Scoped to
+ * the signed-in user.
  */
 
+function coveredBrokersWhere() {
+  return {
+    caRegistered: true,
+    status: "live" as const,
+    removalMethod: { not: "manual_only" as const },
+  };
+}
+
 export async function GET() {
-  const guard = await requireOperator();
+  const guard = await requireUser();
   if (!guard.ok) return guard.response;
 
   const covered = await prisma.broker.findMany({
-    where: { caRegistered: true, removalMethod: { not: "manual_only" } },
+    where: coveredBrokersWhere(),
     select: { id: true, name: true, domain: true },
     orderBy: { name: "asc" },
   });
@@ -31,8 +34,13 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const guard = await requireOperator();
+  const guard = await requireUser();
   if (!guard.ok) return guard.response;
+
+  const user = await prisma.user.findUnique({ where: { id: guard.user.id } });
+  if (!user?.authorizationSignedAt) {
+    return badRequest("Authorization not signed — complete signup consent first.");
+  }
 
   let body: unknown;
   try {
@@ -40,23 +48,15 @@ export async function POST(request: Request) {
   } catch {
     return badRequest("Invalid JSON body");
   }
-
   const parsed = recordDropSubmissionInput.safeParse(body);
   if (!parsed.success) return badRequest(parsed.error);
 
-  const subject = await prisma.subject.findUnique({
-    where: { id: parsed.data.subjectId },
-  });
-  if (!subject) return badRequest("Subject not found");
-
   const covered = await prisma.broker.findMany({
-    where: { caRegistered: true, removalMethod: { not: "manual_only" } },
+    where: coveredBrokersWhere(),
     select: { id: true },
   });
   if (covered.length === 0) {
-    return badRequest(
-      "No CA-registered brokers in the registry. Import the CA registry first.",
-    );
+    return badRequest("No live CA-registered brokers in the registry yet.");
   }
 
   const submittedAt = new Date();
@@ -64,10 +64,10 @@ export async function POST(request: Request) {
   const brokerIds = covered.map((b) => b.id);
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const submission = await tx.channelSubmission.create({
+    const submission = await prisma.$transaction(async (tx) => {
+      const s = await tx.channelSubmission.create({
         data: {
-          subjectId: subject.id,
+          userId: guard.user.id,
           channel: "drop",
           submittedAt,
           requestReference: parsed.data.requestReference ?? null,
@@ -76,17 +76,14 @@ export async function POST(request: Request) {
           finalizeByAt,
         },
       });
-
-      // Create a DROP-channel request per covered broker, marked as covered by
-      // the bulk submission so we don't redundantly hit their per-broker forms.
       for (const brokerId of brokerIds) {
         const req = await tx.removalRequest.create({
           data: {
-            subjectId: subject.id,
+            userId: guard.user.id,
             brokerId,
             channel: "drop",
             state: "skipped_covered_by_drop",
-            channelSubmissionId: submission.id,
+            channelSubmissionId: s.id,
             submittedAt,
             nextRecheckAt: finalizeByAt,
           },
@@ -99,17 +96,11 @@ export async function POST(request: Request) {
           },
         });
       }
-
-      return submission;
+      return s;
     });
 
     return NextResponse.json(
-      {
-        submission: result,
-        coveredCount: brokerIds.length,
-        retrieveByAt,
-        finalizeByAt,
-      },
+      { submission, coveredCount: brokerIds.length, retrieveByAt, finalizeByAt },
       { status: 201 },
     );
   } catch (err) {

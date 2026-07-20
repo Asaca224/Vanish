@@ -10,29 +10,19 @@ import { DROP_CONSUMER_URL } from "@/lib/drop";
  * submission here so Vanish can track the 45/90-day windows and mark covered
  * brokers as handled.
  */
-export function DropFlow({
-  subjectId,
-  coveredCount,
-}: {
-  subjectId: string | null;
-  coveredCount: number;
-}) {
+export function DropFlow({ coveredCount }: { coveredCount: number }) {
   const router = useRouter();
   const [reference, setReference] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function record() {
-    if (!subjectId) return;
     setBusy(true);
     setError(null);
     const res = await fetch("/api/drop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subjectId,
-        requestReference: reference.trim() || undefined,
-      }),
+      body: JSON.stringify({ requestReference: reference.trim() || undefined }),
     });
     setBusy(false);
     if (!res.ok) {
@@ -86,18 +76,13 @@ export function DropFlow({
           <button
             className="btn mt-3"
             onClick={record}
-            disabled={busy || !subjectId || coveredCount === 0}
+            disabled={busy || coveredCount === 0}
           >
             Record DROP submission
           </button>
-          {!subjectId && (
+          {coveredCount === 0 && (
             <p className="mt-2 text-xs text-warn">
-              Create a subject on the Identity page first.
-            </p>
-          )}
-          {coveredCount === 0 && subjectId && (
-            <p className="mt-2 text-xs text-warn">
-              No CA-registered brokers in the registry — import it first.
+              No live CA-registered brokers in the registry yet.
             </p>
           )}
         </li>

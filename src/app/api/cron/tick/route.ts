@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/cron-auth";
+import { prisma } from "@/lib/prisma";
 import {
   pollGmailConfirmations,
   recheckRemovedListings,
   trackDropWindows,
 } from "@/lib/cron-jobs";
+import { runDiscovery } from "@/lib/discovery";
 
 /**
  * The single daily maintenance cron (spec §8). Vercel's Hobby plan caps the
@@ -24,20 +26,17 @@ export async function GET(request: Request) {
     pollGmailConfirmations(),
     recheckRemovedListings(),
     trackDropWindows(),
+    runDiscovery(prisma, "cron"), // §8 daily discovery
   ]);
 
-  const [gmail, recheck, drop] = results;
+  const [gmail, recheck, drop, discovery] = results;
+  const val = (r: PromiseSettledResult<unknown>) =>
+    r.status === "fulfilled" ? r.value : { error: String(r.reason) };
   return NextResponse.json({
     ranAt: new Date().toISOString(),
-    gmailPoll:
-      gmail.status === "fulfilled"
-        ? gmail.value
-        : { error: String(gmail.reason) },
-    recheck:
-      recheck.status === "fulfilled"
-        ? recheck.value
-        : { error: String(recheck.reason) },
-    dropWindows:
-      drop.status === "fulfilled" ? drop.value : { error: String(drop.reason) },
+    gmailPoll: val(gmail),
+    recheck: val(recheck),
+    dropWindows: val(drop),
+    discovery: val(discovery),
   });
 }
