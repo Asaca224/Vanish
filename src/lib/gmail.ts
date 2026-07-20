@@ -1,4 +1,5 @@
-import { google } from "googleapis";
+import { gmail as gmailApi } from "@googleapis/gmail";
+import { OAuth2Client } from "google-auth-library";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -24,7 +25,7 @@ async function operatorGmailClient() {
     );
   }
 
-  const oauth2 = new google.auth.OAuth2(
+  const oauth2 = new OAuth2Client(
     process.env.AUTH_GOOGLE_ID,
     process.env.AUTH_GOOGLE_SECRET,
   );
@@ -50,7 +51,7 @@ async function operatorGmailClient() {
     });
   });
 
-  return google.gmail({ version: "v1", auth: oauth2 });
+  return gmailApi({ version: "v1", auth: oauth2 });
 }
 
 export type ConfirmationHit = {
