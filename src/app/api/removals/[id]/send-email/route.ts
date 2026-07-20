@@ -7,6 +7,8 @@ import { buildOptOutEmail } from "@/lib/email-templates";
 import { resendConfigured, sendOptOutEmail } from "@/lib/resend";
 import { transition } from "@/lib/state-machine";
 
+export const dynamic = "force-dynamic";
+
 /**
  * POST /api/removals/:id/send-email
  *

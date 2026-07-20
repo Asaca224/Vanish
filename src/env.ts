@@ -36,17 +36,41 @@ const schema = z.object({
 // for pages that never touch it, so we validate lazily and cache the result.
 let cached: z.infer<typeof schema> | null = null;
 
+// `next build` imports server modules to collect page data; some read config at
+// import time (e.g. the NextAuth provider setup in src/auth.ts). The build runs
+// in a separate process from the deployed runtime, so falling back to
+// placeholders here keeps the build green WITHOUT weakening runtime validation —
+// at request time the real env is present and validated strictly (and we never
+// cache the placeholders, so a real value is still validated if it appears).
+function isBuildPhase(): boolean {
+  return process.env.NEXT_PHASE === "phase-production-build";
+}
+
+const BUILD_PLACEHOLDERS: Record<string, string> = {
+  DATABASE_URL: "postgresql://placeholder@localhost:5432/placeholder",
+  // Valid 32-byte base64 so any accidental decode wouldn't throw at build.
+  PII_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  AUTH_SECRET: "build-placeholder",
+  AUTH_GOOGLE_ID: "build-placeholder",
+  AUTH_GOOGLE_SECRET: "build-placeholder",
+  OPERATOR_EMAIL: "placeholder@example.com",
+  CRON_SECRET: "build-placeholder",
+  AI_ASSIST_ENABLED: "false",
+};
+
 export function env(): z.infer<typeof schema> {
   if (cached) return cached;
   const parsed = schema.safeParse(process.env);
-  if (!parsed.success) {
-    const missing = parsed.error.issues
-      .map((i) => i.path.join("."))
-      .join(", ");
-    throw new Error(
-      `Invalid or missing environment variables: ${missing}. See .env.example.`,
-    );
+  if (parsed.success) {
+    cached = parsed.data;
+    return cached;
   }
-  cached = parsed.data;
-  return cached;
+  if (isBuildPhase()) {
+    // Fill only what's missing with placeholders; keep real values if set.
+    return schema.parse({ ...BUILD_PLACEHOLDERS, ...process.env });
+  }
+  const missing = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
+  throw new Error(
+    `Invalid or missing environment variables: ${missing}. See .env.example.`,
+  );
 }

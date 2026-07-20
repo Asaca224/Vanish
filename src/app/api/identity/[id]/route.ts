@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireOperator, serverError } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 // DELETE /api/identity/:id → remove one fingerprint attribute (data minimization).
 export async function DELETE(
   _request: Request,

@@ -4,6 +4,8 @@ import { badRequest, requireOperator, serverError } from "@/lib/api";
 import { recordDropSubmissionInput } from "@/lib/validation";
 import { dropWindows } from "@/lib/drop";
 
+export const dynamic = "force-dynamic";
+
 /**
  * POST /api/drop — record the operator's DROP submission (spec §3, Phase 1).
  *

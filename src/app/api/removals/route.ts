@@ -4,6 +4,8 @@ import { badRequest, requireOperator, serverError } from "@/lib/api";
 import { createRemovalRequestInput } from "@/lib/validation";
 import { routeChannel } from "@/lib/channel-router";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/removals?subjectId=&state= → lifecycle records.
 export async function GET(request: Request) {
   const guard = await requireOperator();

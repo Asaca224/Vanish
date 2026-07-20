@@ -3,6 +3,9 @@ import type { Prisma, RemovalMethod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireOperator } from "@/lib/api";
 
+// These handlers read secrets/DB at request time; never statically evaluate.
+export const dynamic = "force-dynamic";
+
 // GET /api/brokers?method=&caRegistered=&q= → the target catalog.
 export async function GET(request: Request) {
   const guard = await requireOperator();

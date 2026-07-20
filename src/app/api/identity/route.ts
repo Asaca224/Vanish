@@ -5,6 +5,8 @@ import { badRequest, requireOperator, serverError } from "@/lib/api";
 import { addAttributesInput } from "@/lib/validation";
 import { decryptAttribute, toEncryptedRow } from "@/lib/identity";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/identity?subjectId=... → decrypted attributes for a subject.
 export async function GET(request: Request) {
   const guard = await requireOperator();

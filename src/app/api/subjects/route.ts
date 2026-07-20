@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { badRequest, requireOperator, serverError } from "@/lib/api";
 import { createSubjectInput } from "@/lib/validation";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const guard = await requireOperator();
   if (!guard.ok) return guard.response;
