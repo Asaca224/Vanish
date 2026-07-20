@@ -45,10 +45,10 @@ later; it cannot run on Vercel. See [Architecture](#architecture).
 - **Gmail confirmation poller** — finds broker confirmation emails and advances
   `awaiting_confirmation → confirmed`. (`src/lib/gmail.ts`)
 - **Lifecycle state machine** with an audited transition log. (`src/lib/state-machine.ts`)
-- **Vercel Cron**: a single daily orchestrator (`/api/cron/tick`) runs the Gmail
-  poll, relisting recheck, and DROP-window tracking — one cron job to stay within
-  Vercel Hobby's cron limit. Each routine is also exposed as an individual
-  endpoint for manual runs. (`src/app/api/cron/*`, `src/lib/cron-jobs.ts`, `vercel.json`)
+- **Scheduled maintenance**: a single orchestrator endpoint (`/api/cron/tick`)
+  runs the Gmail poll, relisting recheck, and DROP-window tracking, guarded by
+  `CRON_SECRET`. Each routine is also exposed individually for manual runs.
+  (`src/app/api/cron/*`, `src/lib/cron-jobs.ts`)
 - **Worker adapter interface + reference adapter template** for Phase 3.
   (`src/worker/*`)
 
@@ -148,8 +148,13 @@ npm run dev
 - Set every `.env.example` key in the Vercel project (Production + Preview).
 - Use the Neon **pooled** connection string for `DATABASE_URL` and the direct
   string for `DIRECT_URL`.
-- `vercel.json` registers the cron jobs; Vercel injects `CRON_SECRET` in the
-  `Authorization` header automatically when it's set as an env var.
+- **Scheduling.** Vercel Cron requires a Pro plan on this account, so the app
+  does **not** declare a Vercel-managed cron. Trigger `/api/cron/tick` daily from
+  any scheduler — a `GET` with `Authorization: Bearer $CRON_SECRET`. Options:
+  - **Vercel Cron (Pro):** add a `crons` block to `vercel.json` pointing at
+    `/api/cron/tick` (e.g. `"0 7 * * *"`); Vercel injects the auth header.
+  - **External cron** (GitHub Actions, cron-job.org, an uptime pinger): call the
+    endpoint daily with the bearer token.
 
 ---
 
