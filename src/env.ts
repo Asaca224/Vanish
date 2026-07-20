@@ -66,8 +66,13 @@ export function env(): z.infer<typeof schema> {
     return cached;
   }
   if (isBuildPhase()) {
-    // Fill only what's missing with placeholders; keep real values if set.
-    return schema.parse({ ...BUILD_PLACEHOLDERS, ...process.env });
+    // Fill missing values with placeholders; keep real values if set. If even
+    // that fails (a malformed value set in the Vercel project would otherwise
+    // abort the build during page-data collection), fall back to pure
+    // placeholders — the build must never depend on runtime secrets.
+    const merged = schema.safeParse({ ...BUILD_PLACEHOLDERS, ...process.env });
+    if (merged.success) return merged.data;
+    return schema.parse(BUILD_PLACEHOLDERS);
   }
   const missing = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
   throw new Error(
