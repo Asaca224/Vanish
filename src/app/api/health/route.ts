@@ -63,6 +63,30 @@ export async function GET() {
     db = { ok: false, error: message.replace(/\s+/g, " ").slice(0, 300) };
   }
 
+  // 4. Deployment metadata — so a stale deployment vs an env-scope problem is
+  // unambiguous. If env vars look missing but this commit/time is fresh, the
+  // vars aren't enabled for THIS environment (VERCEL_ENV); if the deployment is
+  // old, the vars were added after it was built and it just needs a redeploy.
+  const deployment = {
+    vercelEnv: process.env.VERCEL_ENV ?? "local", // production | preview | development
+    branch: process.env.VERCEL_GIT_COMMIT_REF ?? null,
+    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+    region: process.env.VERCEL_REGION ?? null,
+    builtAt: process.env.VERCEL_DEPLOYMENT_ID ? new Date().toISOString() : null,
+    // Bumped whenever this route changes, so you can confirm you're hitting the
+    // newest deploy and not a cached/old one.
+    healthVersion: "2",
+  };
+
+  let scopeHint: string | undefined;
+  if (missingRequired.length > 0) {
+    scopeHint =
+      `Env vars are NOT present in the '${deployment.vercelEnv}' runtime. In Vercel → ` +
+      `Settings → Environment Variables, make sure each missing var is enabled for the ` +
+      `'${deployment.vercelEnv}' environment, then REDEPLOY (env changes never apply to ` +
+      `already-built deployments).`;
+  }
+
   const ok = missingRequired.length === 0 && encryption.ok && db.ok;
   return NextResponse.json(
     {
@@ -71,9 +95,11 @@ export async function GET() {
       env,
       encryption,
       db,
+      deployment,
       hint: ok
         ? "All checks passed."
-        : "Fix any false/missing item above, set env vars in Vercel, run init.sql + seed-brokers.sql, then redeploy.",
+        : (scopeHint ??
+          "DB not reachable — check DATABASE_URL and that init.sql ran, then redeploy."),
     },
     { status: ok ? 200 : 503 },
   );
