@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { decryptAttribute } from "@/lib/identity";
 import { IntakeForm } from "@/components/IntakeForm";
+import { requireSession } from "@/lib/page-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function IntakePage() {
+  await requireSession();
   // MVP is single-subject: use the first (operator) subject if it exists.
   const subject = await prisma.subject.findFirst({
     orderBy: { createdAt: "asc" },

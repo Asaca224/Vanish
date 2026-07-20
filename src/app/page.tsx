@@ -3,10 +3,12 @@ import type { RequestState } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { Stat, StateBadge } from "@/components/ui";
 import { daysUntil } from "@/lib/drop";
+import { requireSession } from "@/lib/page-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
+  await requireSession();
   const [
     subjectCount,
     brokerCount,

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Stat } from "@/components/ui";
+import { requireSession } from "@/lib/page-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ const METHOD_LABEL: Record<string, string> = {
 };
 
 export default async function BrokersPage() {
+  await requireSession();
   const [total, byMethod, brokers] = await Promise.all([
     prisma.broker.count(),
     prisma.broker.groupBy({ by: ["removalMethod"], _count: true }),

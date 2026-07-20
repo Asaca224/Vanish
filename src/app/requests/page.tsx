@@ -1,10 +1,12 @@
 import type { RequestState } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { StateBadge } from "@/components/ui";
+import { requireSession } from "@/lib/page-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function RequestsPage() {
+  await requireSession();
   const requests = await prisma.removalRequest.findMany({
     orderBy: { updatedAt: "desc" },
     take: 500,

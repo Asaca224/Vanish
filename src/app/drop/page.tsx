@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { DropFlow } from "@/components/DropFlow";
 import { daysUntil } from "@/lib/drop";
+import { requireSession } from "@/lib/page-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function DropPage() {
+  await requireSession();
   const [subject, coveredCount, submissions] = await Promise.all([
     prisma.subject.findFirst({ orderBy: { createdAt: "asc" } }),
     prisma.broker.count({
