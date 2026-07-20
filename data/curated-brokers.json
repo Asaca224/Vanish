@@ -1,0 +1,160 @@
+{
+  "_comment": "Curated top-N people-search / data-broker list (spec §3, §11 Phase 0). Merged with the CA registry by the importer. `removalMethod`, `requiresCaptcha`, `requiresId`, `confirmationEmailFrom`, and `recheckDays` drive routing. Verify each broker's current opt-out mechanics at build time — these change. `caRegistered` here is best-effort; the authoritative CA flag comes from the CA registry import.",
+  "brokers": [
+    {
+      "name": "Spokeo",
+      "domain": "spokeo.com",
+      "optOutUrl": "https://www.spokeo.com/optout",
+      "removalMethod": "web_form",
+      "requiresCaptcha": true,
+      "requiresId": false,
+      "confirmationEmailFrom": "spokeo.com",
+      "recheckDays": 30,
+      "caRegistered": true,
+      "adapterKey": "reference-people-search",
+      "notes": "Email-confirmation loop after form submission."
+    },
+    {
+      "name": "Whitepages",
+      "domain": "whitepages.com",
+      "optOutUrl": "https://www.whitepages.com/suppression-requests",
+      "removalMethod": "web_form",
+      "requiresCaptcha": true,
+      "requiresId": false,
+      "confirmationEmailFrom": "whitepages.com",
+      "recheckDays": 30,
+      "caRegistered": true,
+      "notes": "Phone verification step in some flows."
+    },
+    {
+      "name": "BeenVerified",
+      "domain": "beenverified.com",
+      "optOutUrl": "https://www.beenverified.com/app/optout/search",
+      "removalMethod": "web_form",
+      "requiresCaptcha": false,
+      "requiresId": false,
+      "confirmationEmailFrom": "beenverified.com",
+      "recheckDays": 30,
+      "caRegistered": true,
+      "notes": "Requires clicking a link in a confirmation email."
+    },
+    {
+      "name": "Intelius",
+      "domain": "intelius.com",
+      "optOutUrl": "https://www.intelius.com/opt-out/",
+      "removalMethod": "web_form",
+      "requiresCaptcha": true,
+      "requiresId": false,
+      "confirmationEmailFrom": "intelius.com",
+      "recheckDays": 45,
+      "caRegistered": true,
+      "notes": "PeopleConnect family (shares infra with TruthFinder, Instant Checkmate)."
+    },
+    {
+      "name": "TruthFinder",
+      "domain": "truthfinder.com",
+      "optOutUrl": "https://www.truthfinder.com/opt-out/",
+      "removalMethod": "web_form",
+      "requiresCaptcha": true,
+      "requiresId": false,
+      "confirmationEmailFrom": "truthfinder.com",
+      "recheckDays": 45,
+      "caRegistered": true,
+      "notes": "PeopleConnect family."
+    },
+    {
+      "name": "Instant Checkmate",
+      "domain": "instantcheckmate.com",
+      "optOutUrl": "https://www.instantcheckmate.com/opt-out/",
+      "removalMethod": "web_form",
+      "requiresCaptcha": true,
+      "requiresId": false,
+      "confirmationEmailFrom": "instantcheckmate.com",
+      "recheckDays": 45,
+      "caRegistered": true,
+      "notes": "PeopleConnect family."
+    },
+    {
+      "name": "PeopleFinders",
+      "domain": "peoplefinders.com",
+      "optOutUrl": "https://www.peoplefinders.com/opt-out",
+      "removalMethod": "web_form",
+      "requiresCaptcha": false,
+      "requiresId": false,
+      "confirmationEmailFrom": "peoplefinders.com",
+      "recheckDays": 30,
+      "caRegistered": true
+    },
+    {
+      "name": "Radaris",
+      "domain": "radaris.com",
+      "optOutUrl": "https://radaris.com/control/privacy",
+      "removalMethod": "web_form",
+      "requiresCaptcha": true,
+      "requiresId": false,
+      "confirmationEmailFrom": "radaris.com",
+      "recheckDays": 30,
+      "caRegistered": false,
+      "notes": "Historically difficult; may require account creation."
+    },
+    {
+      "name": "MyLife",
+      "domain": "mylife.com",
+      "optOutUrl": "https://www.mylife.com/ccpa/index.pubview",
+      "removalMethod": "email",
+      "requiresCaptcha": false,
+      "requiresId": false,
+      "optOutEmail": "privacy@mylife.com",
+      "confirmationEmailFrom": "mylife.com",
+      "recheckDays": 30,
+      "caRegistered": true,
+      "notes": "Often handled fastest by an emailed CCPA request."
+    },
+    {
+      "name": "PeekYou",
+      "domain": "peekyou.com",
+      "optOutUrl": "https://www.peekyou.com/about/contact/optout/",
+      "removalMethod": "web_form",
+      "requiresCaptcha": true,
+      "requiresId": false,
+      "confirmationEmailFrom": "peekyou.com",
+      "recheckDays": 45,
+      "caRegistered": false
+    },
+    {
+      "name": "US Search",
+      "domain": "ussearch.com",
+      "optOutUrl": "https://www.ussearch.com/opt-out/",
+      "removalMethod": "web_form",
+      "requiresCaptcha": true,
+      "requiresId": false,
+      "confirmationEmailFrom": "ussearch.com",
+      "recheckDays": 45,
+      "caRegistered": true
+    },
+    {
+      "name": "Acxiom",
+      "domain": "acxiom.com",
+      "optOutUrl": "https://www.acxiom.com/optout/",
+      "removalMethod": "email",
+      "requiresCaptcha": false,
+      "requiresId": false,
+      "optOutEmail": "privacy@acxiom.com",
+      "confirmationEmailFrom": "acxiom.com",
+      "recheckDays": 60,
+      "caRegistered": true,
+      "notes": "Large marketing-data broker; CA-registered."
+    },
+    {
+      "name": "LexisNexis",
+      "domain": "lexisnexis.com",
+      "optOutUrl": "https://optout.lexisnexis.com/",
+      "removalMethod": "postal",
+      "requiresCaptcha": false,
+      "requiresId": true,
+      "recheckDays": 90,
+      "caRegistered": true,
+      "notes": "Much of LexisNexis data is FCRA-governed → EXEMPT from CCPA deletion. Track exempt honestly."
+    }
+  ]
+}
