@@ -15,15 +15,15 @@ const REQUIRED = [
   "DATABASE_URL",
   "DIRECT_URL",
   "PII_ENCRYPTION_KEY",
-  "AUTH_SECRET",
   "OPERATOR_EMAIL",
   "CRON_SECRET",
 ] as const;
 
-// Google OAuth is no longer required (email/password login).
+// No longer required (self-contained email/password auth, no NextAuth/Google).
 const OPTIONAL = [
   "RESEND_API_KEY",
   "RESEND_FROM",
+  "AUTH_SECRET",
   "AUTH_GOOGLE_ID",
   "AUTH_GOOGLE_SECRET",
 ] as const;
@@ -59,6 +59,9 @@ export async function GET() {
       prisma.user.count(),
       prisma.removalRequest.count(),
     ]);
+    // Probe the passwordHash column so a missing migration is obvious (login
+    // needs it). Throws if the column doesn't exist yet.
+    await prisma.user.findFirst({ select: { id: true, passwordHash: true } });
     db = { ok: true, counts: { brokers, users, requests } };
   } catch (err) {
     // Surface a short, non-sensitive reason (e.g. "table does not exist",
