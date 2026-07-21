@@ -2,6 +2,7 @@ import type { RequestState } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireOnboarded } from "@/lib/page-auth";
 import { StateBadge } from "@/components/ui";
+import { RequestActions } from "@/components/RequestActions";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,7 @@ export default async function RequestsPage() {
                 <th className="pb-2">Submitted</th>
                 <th className="pb-2">Next recheck</th>
                 <th className="pb-2">Reason</th>
+                <th className="pb-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -81,6 +83,9 @@ export default async function RequestsPage() {
                   </td>
                   <td className="py-2 text-xs text-muted">
                     {r.exemptReason ?? r.failureReason ?? "—"}
+                  </td>
+                  <td className="py-2 text-right">
+                    <RequestActions id={r.id} state={r.state} />
                   </td>
                 </tr>
               ))}
