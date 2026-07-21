@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import {
+  notifyActionNeeded,
   pollGmailConfirmations,
   recheckRemovedListings,
   trackDropWindows,
@@ -27,9 +28,10 @@ export async function GET(request: Request) {
     recheckRemovedListings(),
     trackDropWindows(),
     runDiscovery(prisma, "cron"), // §8 daily discovery
+    notifyActionNeeded(), // §6 action-needed digests
   ]);
 
-  const [gmail, recheck, drop, discovery] = results;
+  const [gmail, recheck, drop, discovery, notify] = results;
   const val = (r: PromiseSettledResult<unknown>) =>
     r.status === "fulfilled" ? r.value : { error: String(r.reason) };
   return NextResponse.json({
@@ -38,5 +40,6 @@ export async function GET(request: Request) {
     recheck: val(recheck),
     dropWindows: val(drop),
     discovery: val(discovery),
+    notify: val(notify),
   });
 }
