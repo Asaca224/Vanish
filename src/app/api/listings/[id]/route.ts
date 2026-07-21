@@ -70,6 +70,16 @@ export async function PATCH(
             note: `Confirmed listing → ${channel} channel`,
           },
         });
+        // Web-form opt-outs run in the browser worker (§7): enqueue a job.
+        if (channel === "web_form") {
+          await prisma.workerJob.create({
+            data: {
+              type: "web_form_removal",
+              payload: { removalRequestId: created.id },
+              state: "queued",
+            },
+          });
+        }
         requestId = created.id;
       }
     }
