@@ -17,6 +17,7 @@ const USER_NAV = [
   { href: "/listings", label: "Listings" },
   { href: "/drop", label: "DROP" },
   { href: "/requests", label: "Requests" },
+  { href: "/report", label: "Report" },
   { href: "/settings", label: "Settings" },
 ];
 
