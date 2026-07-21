@@ -25,6 +25,10 @@ const schema = z.object({
 
   CRON_SECRET: z.string().min(1),
 
+  // Optional dev/local login backdoor. When set, /api/dev-login accepts this
+  // secret to mint a session without Google OAuth. Leave UNSET in real prod.
+  DEV_LOGIN_SECRET: z.string().optional(),
+
   ANTHROPIC_API_KEY: z.string().optional(),
   AI_ASSIST_ENABLED: z
     .enum(["true", "false"])
