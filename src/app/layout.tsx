@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import "./globals.css";
 import { auth, signOut } from "@/auth";
 
@@ -62,7 +63,8 @@ export default async function RootLayout({
               <form
                 action={async () => {
                   "use server";
-                  await signOut({ redirectTo: "/login" });
+                  await signOut();
+                  redirect("/login");
                 }}
               >
                 <button className="text-sm text-muted hover:text-gray-100">

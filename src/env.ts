@@ -15,8 +15,9 @@ const schema = z.object({
   PII_ENCRYPTION_KEY: z.string().min(1),
   PII_ENCRYPTION_KEY_PREVIOUS: z.string().optional(),
 
-  AUTH_SECRET: z.string().min(1),
-  // Optional — the app no longer requires Google OAuth (email/password login).
+  // All optional now — the app uses a self-contained email/password + DB
+  // session layer (no NextAuth / Google OAuth).
+  AUTH_SECRET: z.string().optional(),
   AUTH_GOOGLE_ID: z.string().optional(),
   AUTH_GOOGLE_SECRET: z.string().optional(),
   OPERATOR_EMAIL: z.string().email(),
