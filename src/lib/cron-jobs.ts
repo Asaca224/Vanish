@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { findConfirmationEmails } from "@/lib/gmail";
 import { transition } from "@/lib/state-machine";
 import { addDays, daysUntil } from "@/lib/drop";
+import { hasActionNeeded, sendActionNeededEmail } from "@/lib/notify";
 
 /**
  * The scheduled maintenance routines (spec §8), extracted so they can run
@@ -88,6 +89,53 @@ export async function recheckRemovedListings(): Promise<{
   }
 
   return { due: due.length, requeued };
+}
+
+// Email users who have items needing attention (§6). One digest per run (the
+// cron is daily), skipped when Resend isn't configured.
+export async function notifyActionNeeded(): Promise<{ notified: number }> {
+  const grouped = await prisma.removalRequest.groupBy({
+    by: ["userId", "state"],
+    where: {
+      state: {
+        in: ["awaiting_user", "awaiting_user_verification", "awaiting_confirmation", "blocked"],
+      },
+    },
+    _count: true,
+  });
+
+  const perUser = new Map<
+    string,
+    { awaitingUser: number; awaitingConfirmation: number; blocked: number }
+  >();
+  for (const g of grouped) {
+    const c = perUser.get(g.userId) ?? {
+      awaitingUser: 0,
+      awaitingConfirmation: 0,
+      blocked: 0,
+    };
+    if (g.state === "awaiting_user" || g.state === "awaiting_user_verification") {
+      c.awaitingUser += g._count;
+    } else if (g.state === "awaiting_confirmation") {
+      c.awaitingConfirmation += g._count;
+    } else if (g.state === "blocked") {
+      c.blocked += g._count;
+    }
+    perUser.set(g.userId, c);
+  }
+
+  let notified = 0;
+  for (const [userId, counts] of perUser) {
+    if (!hasActionNeeded(counts)) continue;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (user?.email && (await sendActionNeededEmail(user.email, counts).catch(() => false))) {
+      notified++;
+    }
+  }
+  return { notified };
 }
 
 // Track DROP's 45-day retrieve / 90-day finalize windows and flag overdue
