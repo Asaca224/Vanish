@@ -35,6 +35,8 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  // Email/password login (scrypt). Nullable so OAuth-only users still work.
+  passwordHash  String?
 
   role Role @default(user)
 

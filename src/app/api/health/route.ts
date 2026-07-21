@@ -16,13 +16,17 @@ const REQUIRED = [
   "DIRECT_URL",
   "PII_ENCRYPTION_KEY",
   "AUTH_SECRET",
-  "AUTH_GOOGLE_ID",
-  "AUTH_GOOGLE_SECRET",
   "OPERATOR_EMAIL",
   "CRON_SECRET",
 ] as const;
 
-const OPTIONAL = ["RESEND_API_KEY", "RESEND_FROM"] as const;
+// Google OAuth is no longer required (email/password login).
+const OPTIONAL = [
+  "RESEND_API_KEY",
+  "RESEND_FROM",
+  "AUTH_GOOGLE_ID",
+  "AUTH_GOOGLE_SECRET",
+] as const;
 
 export async function GET() {
   // 1. Which env vars are present (boolean only — never echo the value).
