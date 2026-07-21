@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 const USER_NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/onboarding", label: "Identity" },
+  { href: "/brokers", label: "Send removals" },
   { href: "/listings", label: "Listings" },
   { href: "/drop", label: "DROP" },
   { href: "/requests", label: "Requests" },
