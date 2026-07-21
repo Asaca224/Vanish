@@ -9,9 +9,12 @@ import { env } from "@/env";
  * Google account may sign up. The configured OPERATOR_EMAIL is bootstrapped as
  * the admin; everyone else is a `user`.
  *
- * Gmail read scope is requested so the (optional) Gmail confirmation path works
- * for users who connect it. The forwarding-address path (§2.2) is the default
- * that avoids the restricted scope.
+ * Sign-in requests only NON-SENSITIVE scopes (openid, email, profile). The
+ * forwarding-address path (§2.2) is the default for reading broker confirmation
+ * emails, so we deliberately avoid the `gmail.readonly` RESTRICTED scope here —
+ * it triggers Google's verification/CASA gate and blocks publishing the consent
+ * screen to production. Gmail-connect becomes a separate, opt-in OAuth flow
+ * (behind a flag) once verified.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -20,14 +23,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: env().AUTH_GOOGLE_ID,
       clientSecret: env().AUTH_GOOGLE_SECRET,
-      authorization: {
-        params: {
-          scope:
-            "openid email profile https://www.googleapis.com/auth/gmail.readonly",
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
+      authorization: { params: { scope: "openid email profile" } },
     }),
   ],
   callbacks: {
