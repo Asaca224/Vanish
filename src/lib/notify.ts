@@ -7,12 +7,10 @@ import { resendConfigured, sendOptOutEmail } from "@/lib/resend";
  */
 
 function appUrl(): string {
-  return (
-    process.env.APP_URL ??
-    process.env.AUTH_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ??
-    ""
-  );
+  if (process.env.APP_URL) return process.env.APP_URL;
+  if (process.env.AUTH_URL) return process.env.AUTH_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "";
 }
 
 export type ActionCounts = {
