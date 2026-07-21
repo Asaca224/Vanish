@@ -1,0 +1,21 @@
+{
+  "name": "vanish-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-automation worker for Vanish (spec §7). Runs off-Vercel; pulls jobs from the control plane and does web-form opt-outs with a human-in-the-loop handoff.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "install-browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.49.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
