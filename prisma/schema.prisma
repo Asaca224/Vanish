@@ -1,7 +1,8 @@
-// Vanish data model (spec §5).
-// Storage: Neon (Postgres). All PII values are field-encrypted at the app
-// layer BEFORE they reach Postgres (see src/lib/crypto.ts). Columns holding
-// ciphertext are suffixed `_encrypted` and are opaque blobs to the DB.
+// Vanish data model — v3 (multi-user). Spec §10.
+// Storage: Neon (Postgres). All PII values are field-encrypted at the app layer
+// BEFORE they reach Postgres (see src/lib/crypto.ts). Columns holding ciphertext
+// are suffixed `Encrypted` and are opaque blobs to the DB. Every user-owned row
+// carries userId and MUST be queried scoped by it — no cross-user reads (§2.1).
 
 generator client {
   provider = "prisma-client-js"
@@ -14,8 +15,19 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Auth.js (NextAuth) models — session/account storage via the Prisma adapter.
+// Auth.js (NextAuth) models — the User IS the data subject (multi-user).
 // ---------------------------------------------------------------------------
+
+enum Role {
+  user
+  admin
+}
+
+enum ConfirmationSource {
+  gmail
+  forwarding
+  none
+}
 
 model User {
   id            String    @id @default(cuid())
@@ -23,8 +35,30 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  accounts      Account[]
-  sessions      Session[]
+  // Email/password login (scrypt). Nullable so OAuth-only users still work.
+  passwordHash  String?
+
+  role Role @default(user)
+
+  // Electronic authorized-agent consent captured at signup (§2.2).
+  authorizationSignedAt DateTime?
+  consentVersion        String?
+
+  // Drives channel routing (CA residents → DROP) and confirmation handling.
+  residencyState     String?
+  confirmationSource ConfirmationSource @default(none)
+  // Per-user inbound forwarding token: confirm+<token>@domain (§2.2 MVP path).
+  forwardingToken    String?            @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts           Account[]
+  sessions           Session[]
+  attributes         IdentityAttribute[]
+  listings           Listing[]
+  removalRequests    RemovalRequest[]
+  channelSubmissions ChannelSubmission[]
 }
 
 model Account {
@@ -63,7 +97,7 @@ model VerificationToken {
 }
 
 // ---------------------------------------------------------------------------
-// Domain models (spec §5)
+// Enums
 // ---------------------------------------------------------------------------
 
 enum AttributeType {
@@ -85,6 +119,21 @@ enum RemovalMethod {
   manual_only
 }
 
+enum BrokerStatus {
+  proposed // discovered, awaiting admin review (§8)
+  approved // admin-approved, ready to go live
+  live // in user-facing scanning/removal
+  retired
+  rejected
+}
+
+enum BrokerSource {
+  seed
+  ca_registry
+  discovery
+  manual
+}
+
 enum ListingStatus {
   candidate
   confirmed
@@ -98,12 +147,13 @@ enum Channel {
   postal
 }
 
-// RemovalRequest lifecycle (spec §8).
+// RemovalRequest lifecycle (spec §6).
 enum RequestState {
   discovered
   queued
   in_progress
   awaiting_user
+  awaiting_user_verification
   submitted
   awaiting_confirmation
   confirmed
@@ -123,95 +173,74 @@ enum EvidenceKind {
   pdf
 }
 
-// One row per person the tool acts for. MVP: only the operator (§2.1).
-model Subject {
-  id                      String   @id @default(cuid())
-  label                   String // e.g. "self"
-  isOperator              Boolean  @default(true)
-  // Required for any non-operator subject before requests may be submitted (§9).
-  authorizedAgentDocRef   String?
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-
-  attributes         IdentityAttribute[]
-  listings           Listing[]
-  removalRequests    RemovalRequest[]
-  channelSubmissions ChannelSubmission[]
+enum DiscoveryTrigger {
+  cron
+  admin
 }
 
-// The normalized fingerprint. `valueEncrypted` holds app-layer ciphertext.
+enum CandidateDisposition {
+  proposed
+  rejected
+  duplicate
+}
+
+enum WorkerJobType {
+  scan
+  web_form_removal
+  fetch_page
+}
+
+enum WorkerJobState {
+  queued
+  in_progress
+  done
+  failed
+}
+
+// ---------------------------------------------------------------------------
+// User-owned domain models — all scoped by userId (§2.1)
+// ---------------------------------------------------------------------------
+
 model IdentityAttribute {
   id             String        @id @default(cuid())
-  subjectId      String
+  userId         String
   type           AttributeType
   valueEncrypted String        @db.Text
-  // Non-sensitive, searchable hint for de-duping without decrypting (e.g. a
-  // blind index / HMAC of the normalized value). Never the plaintext.
+  // Keyed HMAC blind index for de-dup without plaintext. Never the plaintext.
   valueHash      String?
+  isPrimary      Boolean       @default(false)
   verified       Boolean       @default(false)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([subjectId, type, valueHash])
-  @@index([subjectId])
+  @@unique([userId, type, valueHash])
+  @@index([userId])
 }
 
-// The target catalog: CA registry + curated people-search list.
-model Broker {
-  id                    String        @id @default(cuid())
-  name                  String
-  domain                String        @unique
-  optOutUrl             String?
-  removalMethod         RemovalMethod
-  requiresCaptcha       Boolean       @default(false)
-  requiresId            Boolean       @default(false)
-  // Pattern for the "from" address of the broker's confirmation email.
-  confirmationEmailFrom String?
-  // Email address to send an email-channel opt-out request to.
-  optOutEmail           String?
-  recheckDays           Int           @default(30)
-  caRegistered          Boolean       @default(false)
-  // If true, a DROP bulk submission covers this broker (derived: caRegistered
-  // && not exempt). See src/lib/channel-router.ts.
-  coveredByDrop         Boolean       @default(false)
-  adapterKey            String? // → worker adapter (spec §6)
-  notes                 String?       @db.Text
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-
-  listings        Listing[]
-  removalRequests RemovalRequest[]
-
-  @@index([removalMethod])
-  @@index([caRegistered])
-}
-
-// A found instance of a subject on a broker.
 model Listing {
-  id             String        @id @default(cuid())
-  subjectId      String
-  brokerId       String
-  profileUrl     String?
-  matchedFields  Json? // which fingerprint fields matched
+  id              String        @id @default(cuid())
+  userId          String
+  brokerId        String
+  profileUrl      String?
+  matchedFields   Json?
   matchConfidence Float         @default(0)
-  status         ListingStatus @default(candidate)
-  discoveredAt   DateTime      @default(now())
+  status          ListingStatus @default(candidate)
+  discoveredAt    DateTime      @default(now())
 
-  subject         Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   broker          Broker           @relation(fields: [brokerId], references: [id], onDelete: Cascade)
   removalRequests RemovalRequest[]
 
-  @@index([subjectId])
+  @@index([userId])
   @@index([brokerId])
   @@index([status])
 }
 
-// The lifecycle record for a single removal.
 model RemovalRequest {
   id                   String       @id @default(cuid())
-  subjectId            String
+  userId               String
   brokerId             String
   listingId            String?
   channel              Channel
@@ -223,67 +252,142 @@ model RemovalRequest {
   nextRecheckAt        DateTime?
   exemptReason         String?
   failureReason        String?
-  // Link back to the DROP bulk submission when channel = drop.
   channelSubmissionId  String?
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
-  subject          Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  broker           Broker            @relation(fields: [brokerId], references: [id], onDelete: Cascade)
-  listing          Listing?          @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  broker            Broker             @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  listing           Listing?           @relation(fields: [listingId], references: [id], onDelete: SetNull)
   channelSubmission ChannelSubmission? @relation(fields: [channelSubmissionId], references: [id], onDelete: SetNull)
-  evidence         Evidence[]
-  events           RequestEvent[]
+  evidence          Evidence[]
+  events            RequestEvent[]
 
-  @@index([subjectId])
+  @@index([userId])
   @@index([state])
   @@index([nextRecheckAt])
   @@index([channelSubmissionId])
 }
 
-// Audit trail of state transitions for a request (supports the state machine).
 model RequestEvent {
-  id              String        @id @default(cuid())
+  id               String        @id @default(cuid())
   removalRequestId String
-  fromState       RequestState?
-  toState         RequestState
-  note            String?
-  createdAt       DateTime      @default(now())
+  fromState        RequestState?
+  toState          RequestState
+  note             String?
+  createdAt        DateTime      @default(now())
 
   removalRequest RemovalRequest @relation(fields: [removalRequestId], references: [id], onDelete: Cascade)
 
   @@index([removalRequestId])
 }
 
-// For DROP: one bulk submission covering many brokers (§5).
 model ChannelSubmission {
-  id              String   @id @default(cuid())
-  subjectId       String
-  channel         Channel  @default(drop)
-  submittedAt     DateTime @default(now())
-  requestReference String? // the reference DROP gives the consumer
-  coversBrokerIds Json // string[] of Broker.id covered
-  // DROP window tracking (§8): retrieve <=45d, finalize <=90d.
-  retrieveByAt    DateTime?
-  finalizeByAt    DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String    @id @default(cuid())
+  userId           String
+  channel          Channel   @default(drop)
+  submittedAt      DateTime  @default(now())
+  requestReference String?
+  coversBrokerIds  Json
+  retrieveByAt     DateTime?
+  finalizeByAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  subject         Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   removalRequests RemovalRequest[]
 
-  @@index([subjectId])
+  @@index([userId])
 }
 
 model Evidence {
   id               String       @id @default(cuid())
   removalRequestId String
   kind             EvidenceKind
-  // Encrypted; prefer an object-storage ref over base64-in-Postgres (§2.1).
   blobRef          String       @db.Text
   capturedAt       DateTime     @default(now())
 
   removalRequest RemovalRequest @relation(fields: [removalRequestId], references: [id], onDelete: Cascade)
 
   @@index([removalRequestId])
+}
+
+// ---------------------------------------------------------------------------
+// Shared / global models
+// ---------------------------------------------------------------------------
+
+model Broker {
+  id                    String        @id @default(cuid())
+  name                  String
+  domain                String        @unique
+  optOutUrl             String?
+  removalMethod         RemovalMethod
+  requiresCaptcha       Boolean       @default(false)
+  requiresId            Boolean       @default(false)
+  confirmationEmailFrom String?
+  optOutEmail           String?
+  recheckDays           Int           @default(30)
+  caRegistered          Boolean       @default(false)
+  coveredByDrop         Boolean       @default(false)
+  adapterKey            String?
+  status                BrokerStatus  @default(proposed)
+  source                BrokerSource  @default(manual)
+  // Evidence snippets backing an auto-discovered proposal (§8.4).
+  evidence              Json?
+  discoveryConfidence   Float?
+  notes                 String?       @db.Text
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  listings        Listing[]
+  removalRequests RemovalRequest[]
+
+  @@index([removalMethod])
+  @@index([caRegistered])
+  @@index([status])
+}
+
+// History of domains the discovery pipeline has seen, so a rejected domain is
+// not re-proposed every run (§8.2).
+model DiscoveryCandidate {
+  id          String               @id @default(cuid())
+  domain      String               @unique
+  firstSeen   DateTime             @default(now())
+  lastSeen    DateTime             @updatedAt
+  disposition CandidateDisposition @default(proposed)
+  runId       String?
+
+  run DiscoveryRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([disposition])
+}
+
+model DiscoveryRun {
+  id         String           @id @default(cuid())
+  trigger    DiscoveryTrigger
+  startedAt  DateTime         @default(now())
+  finishedAt DateTime?
+  // { queries, candidatesFound, proposed, duplicates, rejected, tokens, error }
+  stats      Json?
+  error      String?          @db.Text
+
+  candidates DiscoveryCandidate[]
+
+  @@index([startedAt])
+}
+
+// Job queue drained by the browser-automation worker (§7).
+model WorkerJob {
+  id         String         @id @default(cuid())
+  type       WorkerJobType
+  payload    Json
+  state      WorkerJobState @default(queued)
+  result     Json?
+  lockedBy   String?
+  lockedAt   DateTime?
+  attempts   Int            @default(0)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([state, type])
 }

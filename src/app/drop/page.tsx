@@ -1,34 +1,45 @@
 import { prisma } from "@/lib/prisma";
+import { requireOnboarded } from "@/lib/page-auth";
 import { DropFlow } from "@/components/DropFlow";
 import { daysUntil } from "@/lib/drop";
-import { requireSession } from "@/lib/page-auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function DropPage() {
-  await requireSession();
-  const [subject, coveredCount, submissions] = await Promise.all([
-    prisma.subject.findFirst({ orderBy: { createdAt: "asc" } }),
+  const session = await requireOnboarded();
+  const userId = session.user.id;
+
+  const [user, coveredCount, submissions] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { residencyState: true } }),
     prisma.broker.count({
-      where: { caRegistered: true, removalMethod: { not: "manual_only" } },
+      where: { caRegistered: true, status: "live", removalMethod: { not: "manual_only" } },
     }),
     prisma.channelSubmission.findMany({
-      where: { channel: "drop" },
+      where: { userId, channel: "drop" },
       orderBy: { submittedAt: "desc" },
     }),
   ]);
+
+  const isCa = (user?.residencyState ?? "").toUpperCase() === "CA";
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">California DROP</h1>
         <p className="mt-1 text-sm text-muted">
-          Delete Request and Opt-out Platform — the single highest-leverage
-          channel for California residents. Assisted, not automated.
+          Delete Request and Opt-out Platform — the highest-leverage channel for
+          California residents. Assisted, not automated.
         </p>
       </div>
 
-      <DropFlow subjectId={subject?.id ?? null} coveredCount={coveredCount} />
+      {!isCa && (
+        <div className="card border-warn/40 bg-warn/5 text-sm">
+          DROP covers California residents only. Your residency isn&apos;t set to
+          CA, so this channel may not apply — email/web-form channels still do.
+        </div>
+      )}
+
+      <DropFlow coveredCount={coveredCount} />
 
       {submissions.length > 0 && (
         <div className="card">
@@ -51,25 +62,15 @@ export default async function DropPage() {
                 const finalize = s.finalizeByAt ? daysUntil(s.finalizeByAt) : null;
                 return (
                   <tr key={s.id} className="border-t border-edge">
+                    <td className="py-2">{s.submittedAt.toISOString().slice(0, 10)}</td>
                     <td className="py-2">
-                      {s.submittedAt.toISOString().slice(0, 10)}
+                      {Array.isArray(s.coversBrokerIds) ? s.coversBrokerIds.length : 0}
                     </td>
-                    <td className="py-2">
-                      {Array.isArray(s.coversBrokerIds)
-                        ? s.coversBrokerIds.length
-                        : 0}
-                    </td>
-                    <td className="py-2 text-muted">
-                      {s.requestReference ?? "—"}
-                    </td>
-                    <td
-                      className={`py-2 ${retrieve !== null && retrieve < 0 ? "text-bad" : ""}`}
-                    >
+                    <td className="py-2 text-muted">{s.requestReference ?? "—"}</td>
+                    <td className={`py-2 ${retrieve !== null && retrieve < 0 ? "text-bad" : ""}`}>
                       {retrieve !== null ? `${retrieve}d` : "—"}
                     </td>
-                    <td
-                      className={`py-2 ${finalize !== null && finalize < 0 ? "text-bad" : ""}`}
-                    >
+                    <td className={`py-2 ${finalize !== null && finalize < 0 ? "text-bad" : ""}`}>
                       {finalize !== null ? `${finalize}d` : "—"}
                     </td>
                   </tr>

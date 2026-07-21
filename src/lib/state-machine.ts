@@ -18,8 +18,16 @@ import type { PrismaClient, RemovalRequest, RequestState } from "@prisma/client"
 const TRANSITIONS: Record<RequestState, RequestState[]> = {
   discovered: ["queued", "exempt", "skipped_covered_by_drop", "blocked"],
   queued: ["in_progress", "skipped_covered_by_drop", "exempt", "failed"],
-  in_progress: ["awaiting_user", "submitted", "blocked", "failed", "exempt"],
+  in_progress: [
+    "awaiting_user",
+    "awaiting_user_verification",
+    "submitted",
+    "blocked",
+    "failed",
+    "exempt",
+  ],
   awaiting_user: ["in_progress", "blocked", "failed"],
+  awaiting_user_verification: ["in_progress", "blocked", "failed"],
   submitted: ["awaiting_confirmation", "verifying", "confirmed", "failed"],
   awaiting_confirmation: ["confirmed", "failed", "blocked"],
   confirmed: ["verifying", "removed"],

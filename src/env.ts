@@ -16,14 +16,19 @@ const schema = z.object({
   PII_ENCRYPTION_KEY_PREVIOUS: z.string().optional(),
 
   AUTH_SECRET: z.string().min(1),
-  AUTH_GOOGLE_ID: z.string().min(1),
-  AUTH_GOOGLE_SECRET: z.string().min(1),
+  // Optional — the app no longer requires Google OAuth (email/password login).
+  AUTH_GOOGLE_ID: z.string().optional(),
+  AUTH_GOOGLE_SECRET: z.string().optional(),
   OPERATOR_EMAIL: z.string().email(),
 
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM: z.string().optional(),
 
   CRON_SECRET: z.string().min(1),
+
+  // Optional dev/local login backdoor. When set, /api/dev-login accepts this
+  // secret to mint a session without Google OAuth. Leave UNSET in real prod.
+  DEV_LOGIN_SECRET: z.string().optional(),
 
   ANTHROPIC_API_KEY: z.string().optional(),
   AI_ASSIST_ENABLED: z

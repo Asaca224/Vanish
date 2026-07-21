@@ -1,23 +1,21 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { badRequest, requireOperator, serverError } from "@/lib/api";
+import { badRequest, requireUser, serverError } from "@/lib/api";
 import { createRemovalRequestInput } from "@/lib/validation";
 import { routeChannel } from "@/lib/channel-router";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/removals?subjectId=&state= → lifecycle records.
+// GET /api/removals?state= → this user's lifecycle records.
 export async function GET(request: Request) {
-  const guard = await requireOperator();
+  const guard = await requireUser();
   if (!guard.ok) return guard.response;
 
-  const params = new URL(request.url).searchParams;
-  const subjectId = params.get("subjectId") ?? undefined;
-  const state = params.get("state") ?? undefined;
+  const state = new URL(request.url).searchParams.get("state") ?? undefined;
 
   const requests = await prisma.removalRequest.findMany({
     where: {
-      ...(subjectId ? { subjectId } : {}),
+      userId: guard.user.id,
       ...(state ? { state: state as never } : {}),
     },
     orderBy: { updatedAt: "desc" },
@@ -29,10 +27,16 @@ export async function GET(request: Request) {
   return NextResponse.json({ requests });
 }
 
-// POST /api/removals → create a removal request, routing to the right channel.
+// POST /api/removals → create a removal request for this user.
 export async function POST(request: Request) {
-  const guard = await requireOperator();
+  const guard = await requireUser();
   if (!guard.ok) return guard.response;
+
+  // §2.2: a user must have signed the authorization before any request runs.
+  const user = await prisma.user.findUnique({ where: { id: guard.user.id } });
+  if (!user?.authorizationSignedAt) {
+    return badRequest("Authorization not signed — complete signup consent first.");
+  }
 
   let body: unknown;
   try {
@@ -44,31 +48,24 @@ export async function POST(request: Request) {
   const parsed = createRemovalRequestInput.safeParse(body);
   if (!parsed.success) return badRequest(parsed.error);
 
-  const [subject, broker] = await Promise.all([
-    prisma.subject.findUnique({ where: { id: parsed.data.subjectId } }),
-    prisma.broker.findUnique({ where: { id: parsed.data.brokerId } }),
-  ]);
-  if (!subject) return badRequest("Subject not found");
+  const broker = await prisma.broker.findUnique({
+    where: { id: parsed.data.brokerId },
+  });
   if (!broker) return badRequest("Broker not found");
-
-  // §9: never submit for a non-operator subject without authorization on file.
-  if (!subject.isOperator && !subject.authorizedAgentDocRef) {
-    return badRequest(
-      "Cannot create requests for a non-operator subject without authorizedAgentDocRef (§9).",
-    );
+  // Only admin-approved, live brokers are user-actionable (§2.3, §8).
+  if (broker.status !== "live") {
+    return badRequest(`Broker "${broker.name}" is not live (status: ${broker.status}).`);
   }
 
   const channel = routeChannel(broker);
   if (channel === "manual_only") {
-    return badRequest(
-      `Broker "${broker.name}" is manual_only — no automated channel. Handle by hand.`,
-    );
+    return badRequest(`Broker "${broker.name}" is manual_only — no automated channel.`);
   }
 
   try {
     const created = await prisma.removalRequest.create({
       data: {
-        subjectId: subject.id,
+        userId: guard.user.id,
         brokerId: broker.id,
         listingId: parsed.data.listingId ?? null,
         channel,

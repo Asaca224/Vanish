@@ -1,43 +1,29 @@
 import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
-import { env } from "@/env";
 
 /**
- * Auth.js (NextAuth) with the Google provider (spec §10). The same Google
- * sign-in grants the Gmail read scope, so login and confirmation-reading share
- * one OAuth flow.
- *
- * SINGLE-TENANT (§2.1): only OPERATOR_EMAIL may sign in. A cloud DB holding PII
- * must not be openable by anyone who happens to have a Google account.
+ * Auth.js (NextAuth) is used only for SESSION MANAGEMENT here (database sessions
+ * via the Prisma adapter) — `auth()` reads the session and `signOut()` clears
+ * it. Login/signup happen through email + password (see /api/login, /api/signup,
+ * src/lib/session.ts). There is no OAuth provider — the product does not require
+ * Google sign-in.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
-  providers: [
-    Google({
-      clientId: env().AUTH_GOOGLE_ID,
-      clientSecret: env().AUTH_GOOGLE_SECRET,
-      authorization: {
-        params: {
-          // Read the inbox for broker confirmations; offline + consent so we
-          // reliably receive a refresh token for background Gmail polling.
-          scope:
-            "openid email profile https://www.googleapis.com/auth/gmail.readonly",
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
-    }),
-  ],
+  providers: [],
   callbacks: {
-    async signIn({ user }) {
-      const operator = env().OPERATOR_EMAIL.toLowerCase();
-      return (user.email ?? "").toLowerCase() === operator;
+    // Database-session strategy: `user` is the DB row, so role + id are known.
+    async session({ session, user }) {
+      if (session.user) {
+        session.user.id = user.id;
+        session.user.role = (user as { role?: "user" | "admin" }).role ?? "user";
+      }
+      return session;
     },
   },
   pages: {
-    signIn: "/signin",
+    signIn: "/login",
   },
 });

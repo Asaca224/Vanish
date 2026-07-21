@@ -1,89 +1,95 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { Stat } from "@/components/ui";
-import { requireSession } from "@/lib/page-auth";
+import { requireOnboarded } from "@/lib/page-auth";
+import { RemovalLauncher } from "@/components/RemovalLauncher";
+import { resendConfigured } from "@/lib/resend";
 
 export const dynamic = "force-dynamic";
 
-const METHOD_LABEL: Record<string, string> = {
-  drop: "DROP",
-  email: "Email",
-  web_form: "Web form",
-  postal: "Postal",
-  manual_only: "Manual only",
-};
-
 export default async function BrokersPage() {
-  await requireSession();
-  const [total, byMethod, brokers] = await Promise.all([
-    prisma.broker.count(),
-    prisma.broker.groupBy({ by: ["removalMethod"], _count: true }),
-    prisma.broker.findMany({ orderBy: { name: "asc" }, take: 500 }),
-  ]);
+  await requireOnboarded();
 
-  const methodCounts = Object.fromEntries(
-    byMethod.map((m) => [m.removalMethod, m._count]),
-  );
+  const live = await prisma.broker.findMany({
+    where: { status: "live" },
+    orderBy: { name: "asc" },
+  });
+
+  const emailBrokers = live
+    .filter((b) => b.removalMethod === "email" && b.optOutEmail)
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      domain: b.domain,
+      removalMethod: b.removalMethod,
+      optOutEmail: b.optOutEmail,
+    }));
+
+  const others = live.filter((b) => b.removalMethod !== "email");
+  const resendReady = resendConfigured();
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Broker registry</h1>
-          <p className="mt-1 text-sm text-muted">
-            Seeded from the CA data broker registry + a curated people-search
-            list. Run <code className="text-gray-300">npm run brokers:import</code>{" "}
-            to (re)load.
-          </p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold">Send removals</h1>
+        <p className="mt-1 text-sm text-muted">
+          Email-channel opt-outs go out from Vanish via Resend, using the minimum
+          fields a broker needs. Review each draft before it sends.
+        </p>
       </div>
 
-      {total === 0 ? (
+      {!resendReady && (
         <div className="card border-warn/40 bg-warn/5 text-sm">
-          Registry is empty. Import it with{" "}
-          <code className="text-gray-300">npm run brokers:import</code> (see the
-          README for the CA registry CSV source).
+          Resend isn&apos;t configured yet — set <code>RESEND_API_KEY</code> and a
+          verified <code>RESEND_FROM</code> domain, then redeploy. Drafts will
+          preview but sending will fail until then.
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-            <Stat label="Total" value={total} />
-            {["drop", "email", "web_form", "postal"].map((m) => (
-              <Stat key={m} label={METHOD_LABEL[m]} value={methodCounts[m] ?? 0} />
-            ))}
-          </div>
+      )}
 
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+          Email opt-outs ({emailBrokers.length})
+        </h2>
+        <RemovalLauncher brokers={emailBrokers} />
+      </section>
+
+      {others.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+            Other channels
+          </h2>
           <div className="card overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted">
                   <th className="pb-2">Broker</th>
-                  <th className="pb-2">Method</th>
-                  <th className="pb-2">CA</th>
-                  <th className="pb-2">DROP</th>
-                  <th className="pb-2">CAPTCHA</th>
-                  <th className="pb-2">ID</th>
-                  <th className="pb-2">Recheck</th>
+                  <th className="pb-2">Channel</th>
+                  <th className="pb-2">How</th>
                 </tr>
               </thead>
               <tbody>
-                {brokers.map((b) => (
+                {others.map((b) => (
                   <tr key={b.id} className="border-t border-edge">
                     <td className="py-2">
                       <div className="font-medium">{b.name}</div>
                       <div className="text-xs text-muted">{b.domain}</div>
                     </td>
-                    <td className="py-2">{METHOD_LABEL[b.removalMethod]}</td>
-                    <td className="py-2">{b.caRegistered ? "✓" : "—"}</td>
-                    <td className="py-2">{b.coveredByDrop ? "✓" : "—"}</td>
-                    <td className="py-2">{b.requiresCaptcha ? "✓" : "—"}</td>
-                    <td className="py-2">{b.requiresId ? "✓" : "—"}</td>
-                    <td className="py-2 text-muted">{b.recheckDays}d</td>
+                    <td className="py-2 text-muted">{b.removalMethod}</td>
+                    <td className="py-2 text-xs text-muted">
+                      {b.removalMethod === "drop" && (
+                        <Link href="/drop" className="text-accent hover:underline">
+                          Handled by DROP →
+                        </Link>
+                      )}
+                      {b.removalMethod === "web_form" && "Web form — needs the browser worker (Phase 3)"}
+                      {b.removalMethod === "postal" && "Postal — generate a letter to mail"}
+                      {b.removalMethod === "manual_only" && "Manual only"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </>
+        </section>
       )}
     </div>
   );

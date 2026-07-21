@@ -5,10 +5,26 @@ people-search sites. Vanish intakes your identity "fingerprint," routes each
 broker to the right removal **channel**, tracks every request through its full
 lifecycle, and re-checks on a schedule because brokers re-list data.
 
-This repository is the **control plane** (the entire MVP) — Next.js on Vercel +
-Neon (Postgres) + Resend + Google/Gmail auth. Interactive browser automation
-(the human-in-the-loop web-form opt-outs) lives in a **separate worker** added
-later; it cannot run on Vercel. See [Architecture](#architecture).
+This repository is the **control plane** — Next.js on Vercel + Neon
+(Postgres) + Resend + Google/Gmail auth + the Anthropic API. Interactive browser
+automation (the human-in-the-loop web-form opt-outs) lives in a **separate
+worker** added later; it cannot run on Vercel. See [Architecture](#architecture).
+
+## v3 — multi-user + aggregator discovery
+
+Vanish is **multi-user** with `user` / `admin` roles. Each user signs up with
+Google, signs an electronic authorized-agent consent (§2.2), completes an
+identity intake, and gets their own field-encrypted fingerprint — every query is
+scoped by `userId`, no cross-user reads. One-click account deletion purges all
+of a user's data.
+
+The headline v3 feature is the **aggregator-discovery pipeline** (`src/lib/discovery.ts`,
+`/admin`): a daily cron and an admin "Search for new aggregators" button search
+the web (Anthropic `web_search`), fetch candidate sites' public pages, have Claude
+extract the removal process into strict JSON, and file them as **proposed** brokers
+for admin review — only admin-**approved** brokers ever enter user-facing removal.
+No user PII ever enters the discovery pipeline. Schema changed substantially since
+Phase 1 — run `npx prisma db push` before deploying.
 
 > **This is not legal advice.** Validate the legal posture — authorized-agent
 > mode and automation-vs-ToS especially — with counsel before shipping anything

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Zod schemas for API input validation. */
+/** Zod schemas for API input validation (multi-user; user comes from session). */
 
 export const attributeTypeEnum = z.enum([
   "name",
@@ -13,11 +13,11 @@ export const attributeTypeEnum = z.enum([
   "relative",
 ]);
 
-// Per-type value validation. Runs after a non-empty check.
 export const identityAttributeInput = z
   .object({
     type: attributeTypeEnum,
     value: z.string().trim().min(1, "Value is required").max(500),
+    isPrimary: z.boolean().optional().default(false),
     verified: z.boolean().optional().default(false),
   })
   .superRefine((data, ctx) => {
@@ -41,7 +41,6 @@ export const identityAttributeInput = z
       }
     }
     if (data.type === "dob") {
-      // Accept a full date or a year-only value (approximate DOB per §1).
       if (!/^\d{4}(-\d{2}-\d{2})?$/.test(data.value)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -52,31 +51,73 @@ export const identityAttributeInput = z
     }
   });
 
-export const createSubjectInput = z.object({
-  label: z.string().trim().min(1).max(100).default("self"),
-  isOperator: z.boolean().default(true),
-  // Required for non-operator subjects before any request is submitted (§9).
-  authorizedAgentDocRef: z.string().trim().max(500).optional(),
-});
-
 export const addAttributesInput = z.object({
-  subjectId: z.string().min(1),
   attributes: z.array(identityAttributeInput).min(1).max(100),
 });
 
+// Signup electronic authorization capture (§2.2).
+export const signAuthorizationInput = z.object({
+  agree: z.literal(true, {
+    errorMap: () => ({ message: "You must authorize the platform to act for you." }),
+  }),
+  consentVersion: z.string().min(1),
+  residencyState: z.string().trim().max(2).optional(),
+});
+
+export const updateAccountInput = z.object({
+  residencyState: z.string().trim().max(2).optional(),
+  confirmationSource: z.enum(["gmail", "forwarding", "none"]).optional(),
+});
+
 export const createRemovalRequestInput = z.object({
-  subjectId: z.string().min(1),
   brokerId: z.string().min(1),
   listingId: z.string().optional(),
 });
 
 export const sendEmailOptOutInput = z.object({
-  removalRequestId: z.string().min(1),
-  // Operator must approve the drafted email before it sends (§2.2).
   approved: z.literal(true),
 });
 
 export const recordDropSubmissionInput = z.object({
-  subjectId: z.string().min(1),
   requestReference: z.string().trim().max(200).optional(),
+});
+
+// --- Admin: broker registry + discovery -----------------------------------
+
+export const removalMethodEnum = z.enum([
+  "drop",
+  "email",
+  "web_form",
+  "postal",
+  "manual_only",
+]);
+
+export const brokerStatusEnum = z.enum([
+  "proposed",
+  "approved",
+  "live",
+  "retired",
+  "rejected",
+]);
+
+export const upsertBrokerInput = z.object({
+  name: z.string().trim().min(1).max(200),
+  domain: z.string().trim().min(1).max(200),
+  optOutUrl: z.string().trim().url().optional().or(z.literal("")),
+  removalMethod: removalMethodEnum,
+  optOutEmail: z.string().trim().email().optional().or(z.literal("")),
+  requiresCaptcha: z.boolean().optional().default(false),
+  requiresId: z.boolean().optional().default(false),
+  confirmationEmailFrom: z.string().trim().max(200).optional(),
+  recheckDays: z.number().int().min(1).max(365).optional().default(30),
+  caRegistered: z.boolean().optional().default(false),
+  status: brokerStatusEnum.optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
+
+export const reviewProposalInput = z.object({
+  brokerId: z.string().min(1),
+  action: z.enum(["approve", "reject"]),
+  // Optional edits applied before approval.
+  edits: upsertBrokerInput.partial().optional(),
 });
