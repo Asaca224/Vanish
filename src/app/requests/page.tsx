@@ -85,7 +85,17 @@ export default async function RequestsPage() {
                     {r.exemptReason ?? r.failureReason ?? "—"}
                   </td>
                   <td className="py-2 text-right">
-                    <RequestActions id={r.id} state={r.state} />
+                    <div className="flex items-center justify-end gap-3">
+                      {r.channel === "postal" && (
+                        <a
+                          href={`/letters/${r.id}`}
+                          className="text-xs text-accent hover:underline"
+                        >
+                          Letter
+                        </a>
+                      )}
+                      <RequestActions id={r.id} state={r.state} />
+                    </div>
                   </td>
                 </tr>
               ))}
